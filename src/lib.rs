@@ -21,11 +21,15 @@ fn process_is_threaded() -> bool {
     false
 }
 
-fn try_set_env_var_impl(key: &OsStr, value: &OsStr) -> Result<(), Error> {
+fn try_set_env_var_impl(key: &OsStr, value: Option<&OsStr>) -> Result<(), Error> {
     if process_is_threaded() {
         return Err(Error);
     }
-    std::env::set_var(key, value);
+    if let Some(v) = value {
+        std::env::set_var(key, v);
+    } else {
+        std::env::remove_var(key);
+    }
     Ok(())
 }
 
@@ -33,7 +37,13 @@ fn try_set_env_var_impl(key: &OsStr, value: &OsStr) -> Result<(), Error> {
 pub fn try_set_env_var<K: AsRef<OsStr>, V: AsRef<OsStr>>(key: K, value: V) -> Result<(), Error> {
     let key = key.as_ref();
     let value = value.as_ref();
-    try_set_env_var_impl(key, value)
+    try_set_env_var_impl(key, Some(value))
+}
+
+/// Wrapper for [`std::env::remove_var`] which will panic if the process has multiple threads.
+pub fn try_remove_env_var<K: AsRef<OsStr>>(key: K) -> Result<(), Error> {
+    let key = key.as_ref();
+    try_set_env_var_impl(key, None)
 }
 
 #[cfg(test)]
