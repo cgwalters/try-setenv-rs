@@ -2,6 +2,33 @@
 // as a separate file to ensure we are started without threads;
 // the cargo test runtime may spawn threads.
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn test_fork() -> std::io::Result<()> {
+    use nix::sys::wait::WaitStatus;
+
+    unsafe {
+        let p = nix::unistd::fork()?;
+        match p {
+            nix::unistd::ForkResult::Parent { child } => {
+                match nix::sys::wait::waitpid(child, None)? {
+                    WaitStatus::Exited(p, status) => {
+                        assert_eq!(p, child);
+                        assert_eq!(status, 0);
+                    }
+                    o => {
+                        panic!("child process failed: {:?}", o)
+                    }
+                }
+                Ok(())
+            }
+            nix::unistd::ForkResult::Child => {
+                try_setenv::try_set_env_var("foo", "bar").unwrap();
+                std::process::exit(0);
+            }
+        }
+    }
+}
+
 fn main() {
     try_setenv::try_set_env_var("foo", "bar").unwrap();
     assert_eq!(std::env::var_os("foo").unwrap(), "bar");
@@ -19,5 +46,11 @@ fn main() {
     })
     .join()
     .unwrap();
+
+    if cfg!(any(target_os = "linux", target_os = "android")) {
+        test_fork().unwrap();
+        println!("Validated fork()");
+    }
+
     println!("Validated try_set_env_var with and without threads.")
 }
